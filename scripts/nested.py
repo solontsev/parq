@@ -28,10 +28,7 @@ def nested_schema():
         pa.field('contact', pa.struct([
             pa.field('email', pa.string()),
             pa.field('phone_numbers', pa.list_(pa.string())),
-            pa.field('social_media', pa.list_(pa.struct([
-                pa.field('key', pa.string()),
-                pa.field('value', pa.string())
-            ])))
+            pa.field('social_media', pa.map_(pa.string(), pa.string()))
         ])),
         # List of structs: course history
         pa.field('courses', pa.list_(pa.struct([
@@ -81,15 +78,12 @@ def nested_schema():
                 ['555-0005', '555-0105']
             ]),
             pa.array([
-                [('twitter', '@alice'), ('linkedin', 'alice-profile')],
-                [('github', 'bob-github'), ('twitter', '@bob_dev')],
-                [('instagram', 'charlie_photo'), ('github', 'charlie-code')],
-                [('linkedin', 'diana-profile')],
-                [('twitter', '@eve'), ('github', 'eve-dev'), ('instagram', 'eve_art')]
-            ], type=pa.list_(pa.struct([
-                pa.field('key', pa.string()),
-                pa.field('value', pa.string())
-            ])))
+                {'twitter': '@alice', 'linkedin': 'alice-profile'},
+                {'github': 'bob-github', 'twitter': '@bob_dev'},
+                {'instagram': 'charlie_photo', 'github': 'charlie-code'},
+                {'linkedin': 'diana-profile'},
+                {'twitter': '@eve', 'github': 'eve-dev', 'instagram': 'eve_art'}
+            ], type=pa.map_(pa.string(), pa.string()))
         ], names=['email', 'phone_numbers', 'social_media']),
 
         # Courses list of structs
