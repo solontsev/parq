@@ -17,8 +17,8 @@ path = "src/bin/parq.rs"
 
 [dependencies]
 clap = { version = "4.5.54", features = ["derive"] }
-parquet = "57.1.0"
-thiserror = "2.0.17"
+parquet = "57.2.0"
+thiserror = "2.0.18"
 ratatui = "0.30.0"
 crossterm = "0.29.0"
 anyhow = "1.0.100"
