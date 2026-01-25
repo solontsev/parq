@@ -1,5 +1,7 @@
 pub mod app;
+pub mod format;
 
+use chrono::{DateTime, Local};
 use parquet::file::reader::{FileReader, SerializedFileReader};
 use parquet::schema::types::Type;
 use std::fs::File;
@@ -7,21 +9,30 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum AppError {
-    #[error("Failed to read file: {0}")]
+    #[error(transparent)]
     IoError(#[from] std::io::Error),
 
-    #[error("Failed to extract parquet metadata: {0}")]
+    #[error(transparent)]
     ParquetError(#[from] parquet::errors::ParquetError),
 }
 
 #[derive(Debug, Clone)]
-pub struct ParquetFileInfo {
-    pub meta_info: ParquetFileMetaInfo,
-    pub row_groups_info: Vec<RowGroupInfo>,
+pub struct ParquetFileData {
+    pub file_meta: FileMetadata,
+    pub metadata: ParquetFileMetadata,
+    pub row_groups_data: Vec<RowGroupData>,
 }
 
 #[derive(Debug, Clone)]
-pub struct ParquetFileMetaInfo {
+pub struct FileMetadata {
+    pub name: String,
+    pub created: DateTime<Local>,
+    pub modified: DateTime<Local>,
+    pub size: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct ParquetFileMetadata {
     pub num_rows: i64,
     pub version: i32,
     pub created_by: Option<String>,
@@ -29,6 +40,7 @@ pub struct ParquetFileMetaInfo {
     pub schema: String,
     pub schema_tree: SchemaNode,
     pub key_value_metadata: Vec<(String, String)>,
+    pub column_orders: String,
 }
 
 #[derive(Debug, Clone)]
@@ -42,10 +54,12 @@ pub struct SchemaNode {
 }
 
 #[derive(Debug, Clone)]
-pub struct RowGroupInfo {
+pub struct RowGroupData {
     pub index: usize,
     pub num_rows: i64,
     pub total_byte_size: i64,
+    pub compressed_size: i64,
+    pub sorting_columns: String,
     pub columns: Vec<ColumnChunkInfo>,
 }
 
@@ -59,6 +73,7 @@ pub struct ColumnChunkInfo {
     pub total_uncompressed_size: i64,
     pub num_values: i64,
     pub statistics: Option<ColumnStatistics>,
+    pub sort_order: String,
 }
 
 #[derive(Debug, Clone)]
@@ -69,11 +84,96 @@ pub struct ColumnStatistics {
     pub distinct_count: Option<u64>,
 }
 
-impl ParquetFileInfo {
+impl ParquetFileData {
     pub fn new(file_path: &str) -> Result<Self, AppError> {
         let file = File::open(file_path)?;
+
+        // extract basic file metadata
+        let file_meta = file.metadata()?;
+        let created: DateTime<Local> = file_meta.created()?.into();
+        let modified: DateTime<Local> = file_meta.modified()?.into();
+        let size = file_meta.len();
+
         let reader = SerializedFileReader::new(file)?;
-        Ok(Self::from(&reader))
+
+        let pq_meta = reader.metadata();
+        let pq_file_meta = pq_meta.file_metadata();
+        let schema = pq_file_meta.schema_descr();
+
+        Ok(Self {
+            file_meta: FileMetadata {
+                name: file_path.to_owned(),
+                created,
+                modified,
+                size,
+            },
+            metadata: ParquetFileMetadata {
+                num_rows: pq_file_meta.num_rows(),
+                version: pq_file_meta.version(),
+                created_by: pq_file_meta.created_by().map(|s| s.to_string()),
+                num_row_groups: pq_meta.num_row_groups(),
+                schema: format!("{:?}", pq_file_meta.schema()),
+                schema_tree: SchemaNode::from_type(schema.root_schema()),
+                key_value_metadata: pq_file_meta
+                    .key_value_metadata()
+                    .map(|kv| {
+                        kv.iter()
+                            .map(|kv_pair| {
+                                (
+                                    kv_pair.key.clone(),
+                                    kv_pair.value.clone().unwrap_or_default(),
+                                )
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+                column_orders: format!("{:#?}", pq_file_meta.column_orders()),
+            },
+            row_groups_data: pq_meta
+                .row_groups()
+                .iter()
+                .enumerate()
+                .map(|(index, rg)| {
+                    let columns = rg
+                        .columns()
+                        .iter()
+                        .map(|col| {
+                            let stats = col.statistics().map(|s| ColumnStatistics {
+                                min: s.min_bytes_opt().map(|b| format!("{:?}", b)),
+                                max: s.max_bytes_opt().map(|b| format!("{:?}", b)),
+                                null_count: s.null_count_opt(),
+                                distinct_count: s.distinct_count_opt(),
+                            });
+
+                            ColumnChunkInfo {
+                                name: col.column_descr().name().to_string(),
+                                column_type: format!("{:?}", col.column_descr().physical_type()),
+                                encodings: col
+                                    .encodings()
+                                    .map(|e| format!("{:?}", e))
+                                    .collect::<Vec<_>>()
+                                    .join(", "),
+                                compression: format!("{:?}", col.compression()),
+                                total_compressed_size: col.compressed_size(),
+                                total_uncompressed_size: col.uncompressed_size(),
+                                num_values: col.num_values(),
+                                statistics: stats,
+                                sort_order: format!("{:?}", col.column_descr().sort_order()),
+                            }
+                        })
+                        .collect();
+
+                    RowGroupData {
+                        index,
+                        num_rows: rg.num_rows(),
+                        total_byte_size: rg.total_byte_size(),
+                        compressed_size: rg.compressed_size(),
+                        sorting_columns: format!("{:#?}", rg.sorting_columns()),
+                        columns,
+                    }
+                })
+                .collect(),
+        })
     }
 }
 
@@ -122,119 +222,6 @@ impl SchemaNode {
             converted_type,
             logical_type,
             children,
-        }
-    }
-}
-
-impl std::fmt::Display for ParquetFileMetaInfo {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "  Total rows: {}", self.num_rows)?;
-        writeln!(f, "  Version: {}", self.version)?;
-        if let Some(created_by) = &self.created_by {
-            writeln!(f, "  Created by: {}", created_by)?;
-        }
-        if !self.key_value_metadata.is_empty() {
-            writeln!(f, "  K/V metadata: {:?}", self.key_value_metadata)?;
-        }
-        writeln!(f, "  Schema: {}", self.schema)?;
-        writeln!(f, "  Number of row groups: {}", self.num_row_groups)?;
-
-        Ok(())
-    }
-}
-
-impl std::fmt::Display for RowGroupInfo {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "  Row group {}", self.index)?;
-        writeln!(f, "    Rows: {}", self.num_rows)?;
-        Ok(())
-    }
-}
-
-impl std::fmt::Display for ParquetFileInfo {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "📄 FILE METADATA:")?;
-        self.meta_info.fmt(f)?;
-        writeln!(f)?;
-        writeln!(f, "📦 ROW GROUPS:")?;
-        self.row_groups_info.iter().try_for_each(|rg| {
-            writeln!(f)?;
-            rg.fmt(f)
-        })?;
-
-        Ok(())
-    }
-}
-
-impl From<&SerializedFileReader<File>> for ParquetFileInfo {
-    fn from(reader: &SerializedFileReader<File>) -> Self {
-        let meta = reader.metadata();
-        let file_meta = meta.file_metadata();
-        let schema = file_meta.schema_descr();
-
-        ParquetFileInfo {
-            meta_info: ParquetFileMetaInfo {
-                num_rows: file_meta.num_rows(),
-                version: file_meta.version(),
-                created_by: file_meta.created_by().map(|s| s.to_string()),
-                num_row_groups: meta.num_row_groups(),
-                schema: format!("{:?}", file_meta.schema()),
-                schema_tree: SchemaNode::from_type(schema.root_schema()),
-                key_value_metadata: file_meta
-                    .key_value_metadata()
-                    .map(|kv| {
-                        kv.iter()
-                            .map(|kv_pair| {
-                                (
-                                    kv_pair.key.clone(),
-                                    kv_pair.value.clone().unwrap_or_default(),
-                                )
-                            })
-                            .collect()
-                    })
-                    .unwrap_or_default(),
-            },
-            row_groups_info: meta
-                .row_groups()
-                .iter()
-                .enumerate()
-                .map(|(index, rg)| {
-                    let columns = rg
-                        .columns()
-                        .iter()
-                        .map(|col| {
-                            let stats = col.statistics().map(|s| ColumnStatistics {
-                                min: s.min_bytes_opt().map(|b| format!("{:?}", b)),
-                                max: s.max_bytes_opt().map(|b| format!("{:?}", b)),
-                                null_count: s.null_count_opt(),
-                                distinct_count: s.distinct_count_opt(),
-                            });
-
-                            ColumnChunkInfo {
-                                name: col.column_descr().name().to_string(),
-                                column_type: format!("{:?}", col.column_descr().physical_type()),
-                                encodings: col
-                                    .encodings()
-                                    .map(|e| format!("{:?}", e))
-                                    .collect::<Vec<_>>()
-                                    .join(", "),
-                                compression: format!("{:?}", col.compression()),
-                                total_compressed_size: col.compressed_size(),
-                                total_uncompressed_size: col.uncompressed_size(),
-                                num_values: col.num_values(),
-                                statistics: stats,
-                            }
-                        })
-                        .collect();
-
-                    RowGroupInfo {
-                        index,
-                        num_rows: rg.num_rows(),
-                        total_byte_size: rg.total_byte_size(),
-                        columns,
-                    }
-                })
-                .collect(),
         }
     }
 }

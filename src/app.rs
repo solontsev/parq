@@ -1,4 +1,4 @@
-use crate::{ParquetFileInfo, SchemaNode};
+use crate::{ParquetFileData, SchemaNode, format};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, MouseEvent, MouseEventKind};
 use ratatui::{
     Frame, Terminal,
@@ -14,54 +14,53 @@ use std::io;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ViewMode {
-    Structure,
+    Info,
     Schema,
-    Metadata,
+    Data,
     Stats,
 }
 
 impl ViewMode {
     pub fn as_str(&self) -> &str {
         match self {
-            ViewMode::Structure => "Structure",
+            ViewMode::Info => "Info",
             ViewMode::Schema => "Schema",
-            ViewMode::Metadata => "Metadata",
+            ViewMode::Data => "Data",
             ViewMode::Stats => "Stats",
         }
     }
 
     pub fn all() -> [ViewMode; 4] {
         [
-            ViewMode::Structure,
+            ViewMode::Info,
             ViewMode::Schema,
-            ViewMode::Metadata,
             ViewMode::Stats,
+            ViewMode::Data,
         ]
     }
 
     pub fn index(&self) -> usize {
         match self {
-            ViewMode::Structure => 0,
+            ViewMode::Info => 0,
             ViewMode::Schema => 1,
-            ViewMode::Metadata => 2,
-            ViewMode::Stats => 3,
+            ViewMode::Stats => 2,
+            ViewMode::Data => 3,
         }
     }
 
     pub fn from_index(index: usize) -> Self {
         match index {
-            0 => ViewMode::Structure,
+            0 => ViewMode::Info,
             1 => ViewMode::Schema,
-            2 => ViewMode::Metadata,
-            3 => ViewMode::Stats,
-            _ => ViewMode::Structure,
+            2 => ViewMode::Stats,
+            3 => ViewMode::Data,
+            _ => ViewMode::Info,
         }
     }
 }
 
 pub struct App {
-    pub info: ParquetFileInfo,
-    pub file_path: String,
+    pub info: ParquetFileData,
     pub current_view: ViewMode,
     pub should_quit: bool,
     pub scroll_offset: usize,
@@ -89,12 +88,8 @@ impl App {
     }
 
     fn render_footer(&self, frame: &mut Frame, area: Rect) {
-        let help_text = "[Tab/←→] Switch tabs | [1-4] Direct tab | [↑/↓/j/k] Scroll | [PgUp/PgDn] Page | [Home/End] | [q/Esc] Quit";
-        let title = Line::from(vec![
-            Span::raw(" File: "),
-            Span::styled(&self.file_path, Style::default().fg(Color::White)),
-            Span::raw(" "),
-        ]);
+        let help_text = "[Tab/←→] Switch tabs | [1-4] Direct tab | [↑/↓] Scroll | [PgUp/PgDn] Page | [Home/End] | [q/Esc] Quit";
+        let title = Line::from(vec![Span::raw(" Navigation: ")]);
         let footer = Paragraph::new(help_text)
             .style(Style::default().fg(Color::DarkGray))
             .block(
@@ -135,39 +130,77 @@ impl App {
         frame.render_widget(tabs, chunks[0]);
 
         match self.current_view {
-            ViewMode::Structure => self.render_structure_view(frame, chunks[1]),
+            ViewMode::Info => self.render_info_view(frame, chunks[1]),
             ViewMode::Schema => self.render_schema_view(frame, chunks[1]),
-            ViewMode::Metadata => self.render_metadata_view(frame, chunks[1]),
+            ViewMode::Data => self.render_data_view(frame, chunks[1]),
             ViewMode::Stats => self.render_stats_view(frame, chunks[1]),
         }
     }
 
-    fn render_structure_view(&mut self, frame: &mut Frame, area: Rect) {
-        let info = &self.info;
+    fn render_info_view(&mut self, frame: &mut Frame, area: Rect) {
         let mut lines = vec![];
 
+        // file metadata
+        let file_meta = &self.info.file_meta;
         lines.push(Line::from(vec![
-            Span::styled("File Version: ", Style::default().fg(Color::Cyan)),
-            Span::raw(format!("{}", info.meta_info.version)),
+            Span::styled("File: ", Style::default().fg(Color::White).bold()),
+            Span::raw(file_meta.name.clone()),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("Size: ", Style::default().fg(Color::White).bold()),
+            Span::raw(format::format_file_size(file_meta.size)),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("Created: ", Style::default().fg(Color::White).bold()),
+            Span::raw(file_meta.created.to_rfc2822()),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("Modified: ", Style::default().fg(Color::White).bold()),
+            Span::raw(file_meta.modified.to_rfc2822()),
+        ]));
+        lines.push(Line::from(""));
+
+        let pq_meta = &self.info.metadata;
+        lines.push(Line::from(vec![
+            Span::styled("Version: ", Style::default().fg(Color::Cyan)),
+            Span::raw(format!("{}", pq_meta.version)),
         ]));
 
         lines.push(Line::from(vec![
             Span::styled("Total Rows: ", Style::default().fg(Color::Cyan)),
-            Span::raw(format!("{}", info.meta_info.num_rows)),
+            Span::raw(format!("{}", pq_meta.num_rows)),
         ]));
 
         lines.push(Line::from(vec![
             Span::styled("Row Groups: ", Style::default().fg(Color::Cyan)),
-            Span::raw(format!("{}", info.meta_info.num_row_groups)),
+            Span::raw(format!("{}", pq_meta.num_row_groups)),
         ]));
 
-        if let Some(created_by) = &info.meta_info.created_by {
+        if let Some(created_by) = &pq_meta.created_by {
             lines.push(Line::from(vec![
                 Span::styled("Created By: ", Style::default().fg(Color::Cyan)),
                 Span::raw(created_by.clone()),
             ]));
         }
 
+        if !pq_meta.key_value_metadata.is_empty() {
+            lines.push(Line::from(""));
+            lines.push(Line::from(vec![Span::styled(
+                "Key-Value Metadata:",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            )]));
+
+            for (key, value) in &pq_meta.key_value_metadata {
+                lines.push(Line::from(vec![
+                    Span::styled(format!("  {}: ", key), Style::default().fg(Color::Cyan)),
+                    Span::raw(value.clone()),
+                ]));
+            }
+        }
+
+        let info = &self.info;
         lines.push(Line::from(""));
         lines.push(Line::from(vec![Span::styled(
             "Row Groups:",
@@ -176,23 +209,36 @@ impl App {
                 .add_modifier(Modifier::BOLD),
         )]));
 
-        for rg in &info.row_groups_info {
+        for rg in &info.row_groups_data {
             lines.push(Line::from(""));
             lines.push(Line::from(vec![
-                Span::styled("  Row Group ", Style::default().fg(Color::Green)),
-                Span::raw(format!("{}", rg.index)),
+                Span::styled(
+                    format!("  Row Group {}", rg.index),
+                    Style::default().fg(Color::Green),
+                ),
+                Span::raw(format!(
+                    " ({} rows, {} columns)",
+                    format::format_number(rg.num_rows as u64),
+                    format::format_number(rg.columns.len() as u64)
+                )),
             ]));
             lines.push(Line::from(vec![
-                Span::raw("    Rows: "),
-                Span::raw(format!("{}", rg.num_rows)),
+                Span::raw("    Total Size: "),
+                Span::raw(format!(
+                    "{}",
+                    format::format_file_size(rg.total_byte_size as u64)
+                )),
             ]));
             lines.push(Line::from(vec![
-                Span::raw("    Total Bytes: "),
-                Span::raw(format!("{}", rg.total_byte_size)),
+                Span::raw("    Compressed Size: "),
+                Span::raw(format!(
+                    "{}",
+                    format::format_file_size(rg.compressed_size as u64)
+                )),
             ]));
             lines.push(Line::from(vec![
-                Span::raw("    Columns: "),
-                Span::raw(format!("{}", rg.columns.len())),
+                Span::raw("    Sorting Columns: "),
+                Span::raw(format!("{}", rg.sorting_columns)),
             ]));
         }
 
@@ -209,7 +255,7 @@ impl App {
         let mut lines = vec![];
 
         {
-            let schema_tree = &self.info.meta_info.schema_tree;
+            let schema_tree = &self.info.metadata.schema_tree;
             render_schema_node(&schema_tree, 0, &mut lines);
         }
 
@@ -222,56 +268,10 @@ impl App {
         );
     }
 
-    fn render_metadata_view(&mut self, frame: &mut Frame, area: Rect) {
-        let info = &self.info.meta_info;
+    fn render_data_view(&mut self, frame: &mut Frame, area: Rect) {
         let mut lines = vec![];
 
-        lines.push(Line::from(vec![Span::styled(
-            "File Metadata:",
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        )]));
-        lines.push(Line::from(""));
-
-        lines.push(Line::from(vec![
-            Span::styled("Version: ", Style::default().fg(Color::Cyan)),
-            Span::raw(format!("{}", info.version)),
-        ]));
-
-        lines.push(Line::from(vec![
-            Span::styled("Total Rows: ", Style::default().fg(Color::Cyan)),
-            Span::raw(format!("{}", info.num_rows)),
-        ]));
-
-        lines.push(Line::from(vec![
-            Span::styled("Row Groups: ", Style::default().fg(Color::Cyan)),
-            Span::raw(format!("{}", info.num_row_groups)),
-        ]));
-
-        if let Some(created_by) = &info.created_by {
-            lines.push(Line::from(vec![
-                Span::styled("Created By: ", Style::default().fg(Color::Cyan)),
-                Span::raw(created_by.clone()),
-            ]));
-        }
-
-        if !info.key_value_metadata.is_empty() {
-            lines.push(Line::from(""));
-            lines.push(Line::from(vec![Span::styled(
-                "Key-Value Metadata:",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            )]));
-
-            for (key, value) in &info.key_value_metadata {
-                lines.push(Line::from(vec![
-                    Span::styled(format!("  {}: ", key), Style::default().fg(Color::Cyan)),
-                    Span::raw(value.clone()),
-                ]));
-            }
-        }
+        lines.push(Line::from("Coming soon..."));
 
         render_lines_with_scrollbar(
             &mut self.scroll_offset,
@@ -283,7 +283,7 @@ impl App {
     }
 
     fn render_stats_view(&mut self, frame: &mut Frame, area: Rect) {
-        let row_groups = &self.info.row_groups_info;
+        let row_groups = &self.info.row_groups_data;
         let mut lines = vec![];
 
         lines.push(Line::from(vec![Span::styled(
@@ -329,6 +329,11 @@ impl App {
                 lines.push(Line::from(vec![
                     Span::raw("    Uncompressed Size: "),
                     Span::raw(format!("{} bytes", col.total_uncompressed_size)),
+                ]));
+
+                lines.push(Line::from(vec![
+                    Span::raw("    Sort Order: "),
+                    Span::raw(format!("{} bytes", col.sort_order)),
                 ]));
 
                 if let Some(stats) = &col.statistics {
@@ -478,20 +483,20 @@ impl App {
         }
 
         match key.code {
-            KeyCode::Char('1') => self.set_view(ViewMode::Structure),
+            KeyCode::Char('1') => self.set_view(ViewMode::Info),
             KeyCode::Char('2') => self.set_view(ViewMode::Schema),
-            KeyCode::Char('3') => self.set_view(ViewMode::Metadata),
+            KeyCode::Char('3') => self.set_view(ViewMode::Data),
             KeyCode::Char('4') => self.set_view(ViewMode::Stats),
             KeyCode::Tab | KeyCode::Right => self.next_tab(),
             KeyCode::BackTab | KeyCode::Left => self.previous_tab(),
-            KeyCode::Down | KeyCode::Char('j') => self.scroll_down(),
-            KeyCode::Up | KeyCode::Char('k') => self.scroll_up(),
+            KeyCode::Down => self.scroll_down(),
+            KeyCode::Up => self.scroll_up(),
             KeyCode::PageDown => self.page_down(),
             KeyCode::PageUp => self.page_up(),
             KeyCode::Home => self.scroll_to_top(),
             KeyCode::End => self.scroll_to_bottom(),
-            KeyCode::Char('l') => self.expand_current(),
-            KeyCode::Char('h') => self.collapse_current(),
+            // KeyCode::Char('l') => self.expand_current(),
+            // KeyCode::Char('h') => self.collapse_current(),
             _ => {}
         }
     }
@@ -514,11 +519,10 @@ impl App {
         }
     }
 
-    pub fn new(info: ParquetFileInfo, file_path: String) -> Self {
+    pub fn new(info: ParquetFileData) -> Self {
         Self {
             info,
-            file_path,
-            current_view: ViewMode::Structure,
+            current_view: ViewMode::Info,
             should_quit: false,
             scroll_offset: 0,
             max_scroll: 0,

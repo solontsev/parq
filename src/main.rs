@@ -8,7 +8,7 @@ use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture},
     execute,
 };
-use parq::{AppError, ParquetFileInfo, app::App};
+use parq::{AppError, ParquetFileData, app::App};
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use std::io;
@@ -28,7 +28,7 @@ fn main() {
     match run() {
         Ok(_) => (),
         Err(e) => {
-            eprintln!("Error: {e}");
+            eprintln!("{e}");
             std::process::exit(1);
         }
     }
@@ -37,11 +37,10 @@ fn main() {
 fn run() -> Result<()> {
     let args = Args::parse();
 
-    let file_info = ParquetFileInfo::new(&args.filename)?;
+    let file_info = ParquetFileData::new(&args.filename)?;
 
     let mut terminal = init_terminal()?;
-
-    let mut app = App::new(file_info, args.filename);
+    let mut app = App::new(file_info);
     app.run(&mut terminal)?;
     restore_terminal(&mut terminal)?;
 

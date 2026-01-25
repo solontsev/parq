@@ -10,9 +10,19 @@ def simple_parquet():
     }
     table = pa.table(data)
 
+    # Sort by name and id columns
+    # Convert to pandas for sorting, then back to pyarrow table
+    # df = table.to_pandas()
+    # df_sorted = df.sort_values(by=['name', 'id'])
+    # table = pa.Table.from_pandas(df_sorted, preserve_index=False)
+
     # Write to parquet with row_group_size=3 to create 2 row groups (3 rows + 2 rows)
-    file_name = '../data/simple.parquet'
-    pq.write_table(table, file_name, row_group_size=3)
+    file_name = '../data/sorted.parquet'
+    sorting_columns = [
+        pq.SortingColumn(0, False, True),  # 'name' column
+        pq.SortingColumn(1, False, False)   # 'id' column
+    ]
+    pq.write_table(table, file_name, row_group_size=3, sorting_columns=sorting_columns)
 
     print(f"Parquet file created: {file_name}")
     print("\nFile structure:")
