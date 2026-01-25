@@ -4,7 +4,6 @@ A blazingly-fast terminal tool for exploring and analyzing Apache Parquet files:
 ## Installation
 
 ```bash
-# From PyPI
 cargo install parq
 ```
 
