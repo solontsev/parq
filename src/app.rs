@@ -168,7 +168,7 @@ impl App {
 
         lines.push(Line::from(vec![
             Span::styled("Total Rows: ", Style::default().fg(Color::Cyan)),
-            Span::raw(format!("{}", pq_meta.num_rows)),
+            Span::raw(format::format_number(pq_meta.num_rows)),
         ]));
 
         lines.push(Line::from(vec![
