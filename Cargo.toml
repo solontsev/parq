@@ -1,6 +1,6 @@
 [package]
 name = "parq"
-version = "0.1.0"
+version = "0.1.1"
 description = "A blazingly-fast tool for exploring and analyzing Apache Parquet file: inspect schema, view statistics, browse data, and dissect structures"
 authors = ["Sergey Olontsev <sergey@olontsev.io>"]
 license = "Apache-2.0"
