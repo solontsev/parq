@@ -172,6 +172,11 @@ impl App {
         ]));
 
         lines.push(Line::from(vec![
+            Span::styled("Total Columns: ", Style::default().fg(Color::Cyan)),
+            Span::raw(format!("{}", pq_meta.num_columns)),
+        ]));
+
+        lines.push(Line::from(vec![
             Span::styled("Row Groups: ", Style::default().fg(Color::Cyan)),
             Span::raw(format!("{}", pq_meta.num_row_groups)),
         ]));

@@ -33,7 +33,8 @@ pub struct FileMetadata {
 
 #[derive(Debug, Clone)]
 pub struct ParquetFileMetadata {
-    pub num_rows: i64,
+    pub num_rows: u64,
+    pub num_columns: usize,
     pub version: i32,
     pub created_by: Option<String>,
     pub num_row_groups: usize,
@@ -108,7 +109,8 @@ impl ParquetFileData {
                 size,
             },
             metadata: ParquetFileMetadata {
-                num_rows: pq_file_meta.num_rows(),
+                num_rows: pq_file_meta.num_rows() as u64,
+                num_columns: schema.num_columns(),
                 version: pq_file_meta.version(),
                 created_by: pq_file_meta.created_by().map(|s| s.to_string()),
                 num_row_groups: pq_meta.num_row_groups(),
