@@ -2,6 +2,7 @@ pub mod app;
 pub mod format;
 
 use chrono::{DateTime, Local};
+use parquet::basic::{ConvertedType, LogicalType, TimeUnit};
 use parquet::file::reader::{FileReader, SerializedFileReader};
 use parquet::schema::types::Type;
 use std::fs::File;
@@ -39,19 +40,9 @@ pub struct ParquetFileMetadata {
     pub created_by: Option<String>,
     pub num_row_groups: usize,
     pub schema: String,
-    pub schema_tree: SchemaNode,
+    pub schema_tree: SchemaField,
     pub key_value_metadata: Vec<(String, String)>,
     pub column_orders: String,
-}
-
-#[derive(Debug, Clone)]
-pub struct SchemaNode {
-    pub name: String,
-    pub type_name: String,
-    pub repetition: String,
-    pub converted_type: Option<String>,
-    pub logical_type: Option<String>,
-    pub children: Vec<SchemaNode>,
 }
 
 #[derive(Debug, Clone)]
@@ -115,7 +106,7 @@ impl ParquetFileData {
                 created_by: pq_file_meta.created_by().map(|s| s.to_string()),
                 num_row_groups: pq_meta.num_row_groups(),
                 schema: format!("{:?}", pq_file_meta.schema()),
-                schema_tree: SchemaNode::from_type(schema.root_schema()),
+                schema_tree: SchemaField::from_type(schema.root_schema()),
                 key_value_metadata: pq_file_meta
                     .key_value_metadata()
                     .map(|kv| {
@@ -179,51 +170,178 @@ impl ParquetFileData {
     }
 }
 
-impl SchemaNode {
+#[derive(Debug, Clone)]
+pub struct SchemaField {
+    pub id: Option<i32>,
+    pub name: String,
+    pub _type: SchemaType,
+    pub repetition: Option<String>,
+    pub converted_type: Option<String>,
+    pub logical_type: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub enum SchemaType {
+    Primitive(String),
+    Group(Vec<SchemaField>),
+}
+
+impl SchemaField {
     fn from_type(field: &Type) -> Self {
         let name = field.name().to_string();
         let basic_info = field.get_basic_info();
-
-        let (type_name, repetition) = match field {
-            Type::PrimitiveType { physical_type, .. } => {
-                let rep = if basic_info.has_repetition() {
-                    format!("{:?}", basic_info.repetition())
-                } else {
-                    "REQUIRED".to_string()
-                };
-                (format!("{:?}", physical_type), rep)
-            }
-            Type::GroupType { .. } => {
-                let rep = if basic_info.has_repetition() {
-                    format!("{:?}", basic_info.repetition())
-                } else {
-                    "".to_string()
-                };
-                ("GROUP".to_string(), rep)
-            }
-        };
-
-        let converted_type_val = basic_info.converted_type();
-        let converted_type = if format!("{:?}", converted_type_val) == "NONE" {
+        let id = if basic_info.has_id() {
+            Some(basic_info.id())
+        } else {
             None
-        } else {
-            Some(format!("{:?}", converted_type_val))
-        };
-        let logical_type = basic_info.logical_type_ref().map(|lt| format!("{:?}", lt));
-
-        let children = if let Type::GroupType { fields, .. } = field {
-            fields.iter().map(|f| SchemaNode::from_type(f)).collect()
-        } else {
-            vec![]
         };
 
-        SchemaNode {
+        let converted_type = match basic_info.converted_type() {
+            ConvertedType::NONE => None,
+            t => Some(t.to_string()),
+        };
+
+        let logical_type = basic_info
+            .logical_type_ref()
+            .map(|lt| pq_logical_type_to_string(lt));
+
+        let repetition = if basic_info.has_repetition() {
+            Some(basic_info.repetition().to_string())
+        } else {
+            None
+        };
+
+        let _type = match field {
+            Type::PrimitiveType {
+                physical_type,
+                type_length,
+                scale,
+                precision,
+                ..
+            } => {
+                let mut parts = vec![];
+                if *type_length >= 0 {
+                    parts.push(format!("length = {type_length}"));
+                }
+                if *precision >= 0 {
+                    parts.push(format!("precision = {precision}"));
+                }
+                if *scale >= 0 {
+                    parts.push(format!("scale = {scale}"));
+                }
+                let description = if parts.is_empty() {
+                    format!("{physical_type}")
+                } else {
+                    format!("{physical_type}({})", parts.join(", "))
+                };
+                SchemaType::Primitive(description)
+            }
+            Type::GroupType { fields, .. } => {
+                SchemaType::Group(fields.iter().map(|t| Self::from_type(t)).collect())
+            }
+        };
+
+        SchemaField {
+            id,
             name,
-            type_name,
+            _type,
             repetition,
             converted_type,
             logical_type,
-            children,
         }
+    }
+}
+
+fn pq_logical_type_to_string(lt: &LogicalType) -> String {
+    match lt {
+        LogicalType::String => "string".into(),
+        LogicalType::Map => "map".into(),
+        LogicalType::List => "list".into(),
+        LogicalType::Enum => "enum".into(),
+        LogicalType::Decimal { scale, precision } => format!("decimal({},{})", precision, scale),
+        LogicalType::Date => "date".into(),
+        LogicalType::Time {
+            is_adjusted_to_u_t_c,
+            unit,
+        } => logical_type_time_to_string("time", *is_adjusted_to_u_t_c, unit),
+        LogicalType::Timestamp {
+            is_adjusted_to_u_t_c,
+            unit,
+        } => logical_type_time_to_string("timestamp", *is_adjusted_to_u_t_c, unit),
+        LogicalType::Integer {
+            bit_width,
+            is_signed,
+        } => {
+            let signed = if *is_signed { "signed" } else { "unsigned" };
+            format!("int({}bit, {})", bit_width, signed)
+        }
+        LogicalType::Unknown => "unknown".into(),
+        LogicalType::Json => "json".into(),
+        LogicalType::Bson => "bson".into(),
+        LogicalType::Uuid => "uuid".into(),
+        LogicalType::Float16 => "float16".into(),
+        LogicalType::Variant {
+            specification_version,
+        } => {
+            let specification = specification_version
+                .map(|v| format!("(specification_version = {})", v))
+                .unwrap_or_default();
+            format!("variant{}", specification)
+        }
+        LogicalType::Geometry { crs } => {
+            let crs = crs
+                .as_ref()
+                .map(|c| format!("(crs = {})", c))
+                .unwrap_or_default();
+            format!("geometry{}", crs)
+        }
+        LogicalType::Geography { crs, algorithm } => {
+            let crs = crs.as_ref().map(|c| format!("crs = {}", c));
+            let algorithm = algorithm.map(|a| format!("algorithm = {}", a));
+            let info = crs
+                .into_iter()
+                .chain(algorithm)
+                .collect::<Vec<_>>()
+                .join(", ");
+            let info = if info.is_empty() {
+                ""
+            } else {
+                &format!("({info})")
+            };
+            format!("geography{info}")
+        }
+        LogicalType::_Unknown { field_id } => {
+            format!("unknown(filed_id = {})", field_id)
+        }
+    }
+}
+
+fn logical_type_time_to_string(
+    base_type: &str,
+    is_adjusted_to_utc: bool,
+    unit: &TimeUnit,
+) -> String {
+    let unit = match unit {
+        TimeUnit::MILLIS => "millis",
+        TimeUnit::MICROS => "micros",
+        TimeUnit::NANOS => "nanos",
+    };
+    format!(
+        "{base_type}({unit}, {}adjusted to UTC)",
+        if is_adjusted_to_utc { "" } else { "not " }
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pq_logical_type_to_string;
+    use parquet::basic::LogicalType;
+
+    #[test]
+    fn logical_type_to_string() {
+        assert_eq!(
+            pq_logical_type_to_string(&LogicalType::Date),
+            "date".to_string()
+        );
     }
 }

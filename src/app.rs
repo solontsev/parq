@@ -1,4 +1,4 @@
-use crate::{ParquetFileData, SchemaNode, format};
+use crate::{ParquetFileData, SchemaField, SchemaType, format};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, MouseEvent, MouseEventKind};
 use ratatui::{
     Frame, Terminal,
@@ -597,39 +597,38 @@ impl App {
     }
 }
 
-fn render_schema_node<'a>(node: &'a SchemaNode, depth: usize, lines: &mut Vec<Line<'a>>) {
+fn render_schema_node<'a>(node: &'a SchemaField, depth: usize, lines: &mut Vec<Line<'a>>) {
     let indent = "  ".repeat(depth);
-
     let mut spans = vec![Span::raw(indent)];
 
-    if node.type_name == "GROUP" {
-        spans.push(Span::styled(
-            format!("{} ", node.name),
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        ));
-        if !node.repetition.is_empty() {
+    let children = match &node._type {
+        SchemaType::Group(children) => {
             spans.push(Span::styled(
-                format!("({})", node.repetition),
-                Style::default().fg(Color::Gray),
+                format!("{} ", node.name),
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
             ));
+            Some(children)
         }
-    } else {
-        spans.push(Span::styled(
-            format!("{}: ", node.name),
-            Style::default().fg(Color::Cyan),
-        ));
-        spans.push(Span::styled(
-            node.type_name.clone(),
-            Style::default().fg(Color::Green),
-        ));
-        if !node.repetition.is_empty() {
+        SchemaType::Primitive(type_name) => {
             spans.push(Span::styled(
-                format!(" ({})", node.repetition),
-                Style::default().fg(Color::Gray),
+                format!("{}: ", node.name),
+                Style::default().fg(Color::Cyan),
             ));
+            spans.push(Span::styled(
+                type_name.clone(),
+                Style::default().fg(Color::Green),
+            ));
+            None
         }
+    };
+
+    if let Some(rep) = &node.repetition {
+        spans.push(Span::styled(
+            format!(" ({})", rep),
+            Style::default().fg(Color::Gray),
+        ));
     }
 
     if let Some(logical_type) = &node.logical_type {
@@ -646,7 +645,9 @@ fn render_schema_node<'a>(node: &'a SchemaNode, depth: usize, lines: &mut Vec<Li
 
     lines.push(Line::from(spans));
 
-    for child in &node.children {
-        render_schema_node(child, depth + 1, lines);
+    if let Some(children) = children {
+        for child in children {
+            render_schema_node(child, depth + 1, lines);
+        }
     }
 }
