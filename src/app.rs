@@ -241,10 +241,29 @@ impl App {
                     format::format_file_size(rg.compressed_size as u64)
                 )),
             ]));
-            lines.push(Line::from(vec![
-                Span::raw("    Sorting Columns: "),
-                Span::raw(format!("{}", rg.sorting_columns)),
-            ]));
+            if rg.sorting_columns.is_empty() {
+                lines.push(Line::from(vec![
+                    Span::raw("    Unsorted"),
+                ]));
+            } else {
+                lines.push(Line::from(Span::raw("    Sorted By:")));
+                for sc in &rg.sorting_columns {
+                    let direction = if sc.descending { "DESC" } else { "ASC" };
+                    let nulls = if sc.nulls_first {
+                        "NULLS FIRST"
+                    } else {
+                        "NULLS LAST"
+                    };
+                    lines.push(Line::from(vec![
+                        Span::raw("      "),
+                        Span::styled(&sc.column_path, Style::default().fg(Color::Cyan)),
+                        Span::raw(" "),
+                        Span::styled(direction, Style::default().fg(Color::Green)),
+                        Span::raw(" "),
+                        Span::styled(nulls, Style::default().fg(Color::DarkGray)),
+                    ]));
+                }
+            }
         }
 
         render_lines_with_scrollbar(

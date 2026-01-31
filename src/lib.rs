@@ -51,8 +51,15 @@ pub struct RowGroupData {
     pub num_rows: i64,
     pub total_byte_size: i64,
     pub compressed_size: i64,
-    pub sorting_columns: String,
+    pub sorting_columns: Vec<SortingColumnInfo>,
     pub columns: Vec<ColumnChunkInfo>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SortingColumnInfo {
+    pub column_path: String,
+    pub descending: bool,
+    pub nulls_first: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -156,12 +163,31 @@ impl ParquetFileData {
                         })
                         .collect();
 
+                    let sorting_columns = rg
+                        .sorting_columns()
+                        .map(|cols| {
+                            cols.iter()
+                                .map(|sc| {
+                                    let column_path = schema
+                                        .column(sc.column_idx as usize)
+                                        .path()
+                                        .string();
+                                    SortingColumnInfo {
+                                        column_path,
+                                        descending: sc.descending,
+                                        nulls_first: sc.nulls_first,
+                                    }
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
+
                     RowGroupData {
                         index,
                         num_rows: rg.num_rows(),
                         total_byte_size: rg.total_byte_size(),
                         compressed_size: rg.compressed_size(),
-                        sorting_columns: format!("{:#?}", rg.sorting_columns()),
+                        sorting_columns,
                         columns,
                     }
                 })
