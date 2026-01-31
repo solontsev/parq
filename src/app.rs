@@ -26,7 +26,7 @@ impl ViewMode {
             ViewMode::Info => "Info",
             ViewMode::Schema => "Schema",
             ViewMode::Data => "Data",
-            ViewMode::Stats => "Stats",
+            ViewMode::Stats => "Column Statistics",
         }
     }
 
@@ -241,11 +241,7 @@ impl App {
                     format::format_file_size(rg.compressed_size as u64)
                 )),
             ]));
-            if rg.sorting_columns.is_empty() {
-                lines.push(Line::from(vec![
-                    Span::raw("    Unsorted"),
-                ]));
-            } else {
+            if !rg.sorting_columns.is_empty() {
                 lines.push(Line::from(Span::raw("    Sorted By:")));
                 for sc in &rg.sorting_columns {
                     let direction = if sc.descending { "DESC" } else { "ASC" };
@@ -309,14 +305,6 @@ impl App {
     fn render_stats_view(&mut self, frame: &mut Frame, area: Rect) {
         let row_groups = &self.info.row_groups_data;
         let mut lines = vec![];
-
-        lines.push(Line::from(vec![Span::styled(
-            "Column Statistics:",
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        )]));
-        lines.push(Line::from(""));
 
         for rg in row_groups {
             lines.push(Line::from(vec![

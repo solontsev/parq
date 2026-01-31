@@ -4,6 +4,7 @@ pub mod format;
 use chrono::{DateTime, Local};
 use parquet::basic::{ConvertedType, LogicalType, TimeUnit};
 use parquet::file::reader::{FileReader, SerializedFileReader};
+use parquet::file::statistics::Statistics;
 use parquet::schema::types::Type;
 use std::fs::File;
 use thiserror::Error;
@@ -138,11 +139,14 @@ impl ParquetFileData {
                         .columns()
                         .iter()
                         .map(|col| {
-                            let stats = col.statistics().map(|s| ColumnStatistics {
-                                min: s.min_bytes_opt().map(|b| format!("{:?}", b)),
-                                max: s.max_bytes_opt().map(|b| format!("{:?}", b)),
-                                null_count: s.null_count_opt(),
-                                distinct_count: s.distinct_count_opt(),
+                            let stats = col.statistics().map(|s| {
+                                let (min, max) = format_statistics_min_max(s);
+                                ColumnStatistics {
+                                    min,
+                                    max,
+                                    null_count: s.null_count_opt(),
+                                    distinct_count: s.distinct_count_opt(),
+                                }
                             });
 
                             ColumnChunkInfo {
@@ -168,10 +172,8 @@ impl ParquetFileData {
                         .map(|cols| {
                             cols.iter()
                                 .map(|sc| {
-                                    let column_path = schema
-                                        .column(sc.column_idx as usize)
-                                        .path()
-                                        .string();
+                                    let column_path =
+                                        schema.column(sc.column_idx as usize).path().string();
                                     SortingColumnInfo {
                                         column_path,
                                         descending: sc.descending,
@@ -356,6 +358,51 @@ fn logical_type_time_to_string(
         "{base_type}({unit}, {}adjusted to UTC)",
         if is_adjusted_to_utc { "" } else { "not " }
     )
+}
+
+fn format_statistics_min_max(stats: &Statistics) -> (Option<String>, Option<String>) {
+    match stats {
+        Statistics::Boolean(s) => (
+            s.min_opt().map(|v| v.to_string()),
+            s.max_opt().map(|v| v.to_string()),
+        ),
+        Statistics::Int32(s) => (
+            s.min_opt().map(|v| v.to_string()),
+            s.max_opt().map(|v| v.to_string()),
+        ),
+        Statistics::Int64(s) => (
+            s.min_opt().map(|v| v.to_string()),
+            s.max_opt().map(|v| v.to_string()),
+        ),
+        Statistics::Int96(s) => (
+            s.min_opt().map(|v| format!("{:?}", v)),
+            s.max_opt().map(|v| format!("{:?}", v)),
+        ),
+        Statistics::Float(s) => (
+            s.min_opt().map(|v| v.to_string()),
+            s.max_opt().map(|v| v.to_string()),
+        ),
+        Statistics::Double(s) => (
+            s.min_opt().map(|v| v.to_string()),
+            s.max_opt().map(|v| v.to_string()),
+        ),
+        Statistics::ByteArray(s) => (
+            s.min_opt().map(|v| {
+                String::from_utf8(v.data().to_vec()).unwrap_or_else(|_| format!("{:?}", v.data()))
+            }),
+            s.max_opt().map(|v| {
+                String::from_utf8(v.data().to_vec()).unwrap_or_else(|_| format!("{:?}", v.data()))
+            }),
+        ),
+        Statistics::FixedLenByteArray(s) => (
+            s.min_opt().map(|v| {
+                String::from_utf8(v.data().to_vec()).unwrap_or_else(|_| format!("{:?}", v.data()))
+            }),
+            s.max_opt().map(|v| {
+                String::from_utf8(v.data().to_vec()).unwrap_or_else(|_| format!("{:?}", v.data()))
+            }),
+        ),
+    }
 }
 
 #[cfg(test)]
