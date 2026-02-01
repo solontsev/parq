@@ -66,7 +66,9 @@ pub struct SortingColumnInfo {
 #[derive(Debug, Clone)]
 pub struct ColumnChunkInfo {
     pub name: String,
-    pub column_type: String,
+    pub physical_type: String,
+    pub logical_type: Option<String>,
+    pub converted_type: Option<String>,
     pub encodings: String,
     pub compression: String,
     pub total_compressed_size: i64,
@@ -149,12 +151,19 @@ impl ParquetFileData {
                                 }
                             });
 
+                            let converted_type = match col.column_descr().converted_type() {
+                                ConvertedType::NONE => None,
+                                t => Some(t.to_string()),
+                            };
+
                             ColumnChunkInfo {
                                 name: col.column_descr().name().to_string(),
-                                column_type: format!("{:?}", col.column_descr().physical_type()),
+                                physical_type: col.column_descr().physical_type().to_string(),
+                                logical_type: col.column_descr().logical_type_ref().map(pq_logical_type_to_string),
+                                converted_type,
                                 encodings: col
                                     .encodings()
-                                    .map(|e| format!("{:?}", e))
+                                    .map(|e| e.to_string())
                                     .collect::<Vec<_>>()
                                     .join(", "),
                                 compression: format!("{:?}", col.compression()),
@@ -162,7 +171,7 @@ impl ParquetFileData {
                                 total_uncompressed_size: col.uncompressed_size(),
                                 num_values: col.num_values(),
                                 statistics: stats,
-                                sort_order: format!("{:?}", col.column_descr().sort_order()),
+                                sort_order: col.column_descr().sort_order().to_string(),
                             }
                         })
                         .collect();

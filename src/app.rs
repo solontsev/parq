@@ -163,7 +163,7 @@ impl App {
         let pq_meta = &self.info.metadata;
         lines.push(Line::from(vec![
             Span::styled("Version: ", Style::default().fg(Color::Cyan)),
-            Span::raw(format!("{}", pq_meta.version)),
+            Span::raw(pq_meta.version.to_string()),
         ]));
 
         lines.push(Line::from(vec![
@@ -173,12 +173,12 @@ impl App {
 
         lines.push(Line::from(vec![
             Span::styled("Total Columns: ", Style::default().fg(Color::Cyan)),
-            Span::raw(format!("{}", pq_meta.num_columns)),
+            Span::raw(pq_meta.num_columns.to_string()),
         ]));
 
         lines.push(Line::from(vec![
             Span::styled("Row Groups: ", Style::default().fg(Color::Cyan)),
-            Span::raw(format!("{}", pq_meta.num_row_groups)),
+            Span::raw(pq_meta.num_row_groups.to_string()),
         ]));
 
         if let Some(created_by) = &pq_meta.created_by {
@@ -246,7 +246,7 @@ impl App {
                     };
                     lines.push(Line::from(vec![
                         Span::raw("      "),
-                        Span::styled(&sc.column_path, Style::default().fg(Color::White).bold()),
+                        Span::styled(&sc.column_path, Style::default().fg(Color::White)),
                         Span::raw(" "),
                         Span::styled(direction, Style::default().fg(Color::Blue)),
                         Span::raw(" "),
@@ -302,69 +302,79 @@ impl App {
 
         for rg in row_groups {
             lines.push(Line::from(vec![
-                Span::styled("Row Group ", Style::default().fg(Color::Green)),
-                Span::raw(format!("{}", rg.index)),
+                Span::styled(format!("Row Group {}", rg.index), Style::default().fg(Color::Yellow)),
             ]));
             lines.push(Line::from(""));
 
             for col in &rg.columns {
                 lines.push(Line::from(vec![
-                    Span::styled("  Column: ", Style::default().fg(Color::Cyan)),
-                    Span::raw(&col.name),
+                    Span::styled("  Column: ", Style::default().fg(Color::Green)),
+                    Span::styled(&col.name, Style::default().fg(Color::White)),
+                    Span::raw(format!(
+                        " ({} values)",
+                        format::format_number(col.num_values as u64),
+                    )),
                 ]));
                 lines.push(Line::from(vec![
-                    Span::raw("    Type: "),
-                    Span::raw(&col.column_type),
+                    Span::styled("    Physical Type: ", Style::default().fg(Color::Magenta)),
+                    Span::raw(&col.physical_type),
                 ]));
+                if let Some(logical_type) = &col.logical_type {
+                    lines.push(Line::from(vec![
+                        Span::styled("    Logical Type: ", Style::default().fg(Color::Magenta)),
+                        Span::raw(logical_type),
+                    ]));
+                }
+                if let Some(converted_type) = &col.converted_type {
+                    lines.push(Line::from(vec![
+                        Span::styled("    Converted Type: ", Style::default().fg(Color::Magenta)),
+                        Span::raw(converted_type),
+                    ]));
+                }
                 lines.push(Line::from(vec![
-                    Span::raw("    Compression: "),
+                    Span::styled("    Compression: ", Style::default().fg(Color::Magenta)),
                     Span::raw(&col.compression),
                 ]));
                 lines.push(Line::from(vec![
-                    Span::raw("    Encodings: "),
+                    Span::styled("    Encodings: ", Style::default().fg(Color::Magenta)),
                     Span::raw(&col.encodings),
                 ]));
                 lines.push(Line::from(vec![
-                    Span::raw("    Values: "),
-                    Span::raw(format!("{}", col.num_values)),
+                    Span::styled("    Compressed Size: ", Style::default().fg(Color::Magenta)),
+                    Span::raw(format::format_file_size(col.total_compressed_size as u64)),
                 ]));
                 lines.push(Line::from(vec![
-                    Span::raw("    Compressed Size: "),
-                    Span::raw(format!("{} bytes", col.total_compressed_size)),
+                    Span::styled("    Uncompressed Size: ", Style::default().fg(Color::Magenta)),
+                    Span::raw(format::format_file_size(col.total_uncompressed_size as u64)),
                 ]));
                 lines.push(Line::from(vec![
-                    Span::raw("    Uncompressed Size: "),
-                    Span::raw(format!("{} bytes", col.total_uncompressed_size)),
-                ]));
-
-                lines.push(Line::from(vec![
-                    Span::raw("    Sort Order: "),
-                    Span::raw(format!("{} bytes", col.sort_order)),
+                    Span::styled("    Sort Order: ", Style::default().fg(Color::Magenta)),
+                    Span::raw(col.sort_order.to_string()),
                 ]));
 
                 if let Some(stats) = &col.statistics {
                     if let Some(min) = &stats.min {
                         lines.push(Line::from(vec![
-                            Span::raw("    Min: "),
+                            Span::styled("    Min: ", Style::default().fg(Color::Magenta)),
                             Span::raw(min.clone()),
                         ]));
                     }
                     if let Some(max) = &stats.max {
                         lines.push(Line::from(vec![
-                            Span::raw("    Max: "),
+                            Span::styled("    Max: ", Style::default().fg(Color::Magenta)),
                             Span::raw(max.clone()),
                         ]));
                     }
                     if let Some(null_count) = stats.null_count {
                         lines.push(Line::from(vec![
-                            Span::raw("    Null Count: "),
-                            Span::raw(format!("{}", null_count)),
+                            Span::styled("    Null Count: ", Style::default().fg(Color::Magenta)),
+                            Span::raw(null_count.to_string()),
                         ]));
                     }
                     if let Some(distinct_count) = stats.distinct_count {
                         lines.push(Line::from(vec![
-                            Span::raw("    Distinct Count: "),
-                            Span::raw(format!("{}", distinct_count)),
+                            Span::styled("    Distinct Count: ", Style::default().fg(Color::Magenta)),
+                            Span::raw(distinct_count.to_string()),
                         ]));
                     }
                 }
