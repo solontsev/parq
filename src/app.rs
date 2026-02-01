@@ -25,7 +25,7 @@ impl ViewMode {
         match self {
             ViewMode::Info => "Info",
             ViewMode::Schema => "Schema",
-            ViewMode::Data => "Data",
+            ViewMode::Data => "Data Preview",
             ViewMode::Stats => "Column Statistics",
         }
     }
@@ -228,21 +228,15 @@ impl App {
                 )),
             ]));
             lines.push(Line::from(vec![
-                Span::raw("    Total Size: "),
-                Span::raw(format!(
-                    "{}",
-                    format::format_file_size(rg.total_byte_size as u64)
-                )),
+                Span::styled("    Total Size: ", Style::default().fg(Color::Magenta)),
+                Span::raw(format::format_file_size(rg.total_byte_size as u64)),
             ]));
             lines.push(Line::from(vec![
-                Span::raw("    Compressed Size: "),
-                Span::raw(format!(
-                    "{}",
-                    format::format_file_size(rg.compressed_size as u64)
-                )),
+                Span::styled("    Compressed Size: ", Style::default().fg(Color::Magenta)),
+                Span::raw(format::format_file_size(rg.compressed_size as u64)),
             ]));
             if !rg.sorting_columns.is_empty() {
-                lines.push(Line::from(Span::raw("    Sorted By:")));
+                lines.push(Line::from(Span::styled("    Sorted By:", Style::default().fg(Color::Magenta))));
                 for sc in &rg.sorting_columns {
                     let direction = if sc.descending { "DESC" } else { "ASC" };
                     let nulls = if sc.nulls_first {
@@ -252,9 +246,9 @@ impl App {
                     };
                     lines.push(Line::from(vec![
                         Span::raw("      "),
-                        Span::styled(&sc.column_path, Style::default().fg(Color::Cyan)),
+                        Span::styled(&sc.column_path, Style::default().fg(Color::White).bold()),
                         Span::raw(" "),
-                        Span::styled(direction, Style::default().fg(Color::Green)),
+                        Span::styled(direction, Style::default().fg(Color::Blue)),
                         Span::raw(" "),
                         Span::styled(nulls, Style::default().fg(Color::DarkGray)),
                     ]));
