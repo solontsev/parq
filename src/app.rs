@@ -11,6 +11,9 @@ use ratatui::{
     },
 };
 use std::io;
+use std::sync::LazyLock;
+
+static FIELD_STYLE: LazyLock<Style> = LazyLock::new(|| Style::default().fg(Color::Magenta));
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ViewMode {
@@ -316,64 +319,64 @@ impl App {
                     )),
                 ]));
                 lines.push(Line::from(vec![
-                    Span::styled("    Physical Type: ", Style::default().fg(Color::Magenta)),
+                    Span::styled("    Physical Type: ", *FIELD_STYLE),
                     Span::raw(&col.physical_type),
                 ]));
                 if let Some(logical_type) = &col.logical_type {
                     lines.push(Line::from(vec![
-                        Span::styled("    Logical Type: ", Style::default().fg(Color::Magenta)),
+                        Span::styled("    Logical Type: ", *FIELD_STYLE),
                         Span::raw(logical_type),
                     ]));
                 }
                 if let Some(converted_type) = &col.converted_type {
                     lines.push(Line::from(vec![
-                        Span::styled("    Converted Type: ", Style::default().fg(Color::Magenta)),
+                        Span::styled("    Converted Type: ", *FIELD_STYLE),
                         Span::raw(converted_type),
                     ]));
                 }
                 lines.push(Line::from(vec![
-                    Span::styled("    Compression: ", Style::default().fg(Color::Magenta)),
+                    Span::styled("    Compression: ", *FIELD_STYLE),
                     Span::raw(&col.compression),
                 ]));
                 lines.push(Line::from(vec![
-                    Span::styled("    Encodings: ", Style::default().fg(Color::Magenta)),
+                    Span::styled("    Encodings: ", *FIELD_STYLE),
                     Span::raw(&col.encodings),
                 ]));
                 lines.push(Line::from(vec![
-                    Span::styled("    Compressed Size: ", Style::default().fg(Color::Magenta)),
+                    Span::styled("    Compressed Size: ", *FIELD_STYLE),
                     Span::raw(format::format_file_size(col.total_compressed_size as u64)),
                 ]));
                 lines.push(Line::from(vec![
-                    Span::styled("    Uncompressed Size: ", Style::default().fg(Color::Magenta)),
+                    Span::styled("    Uncompressed Size: ", *FIELD_STYLE),
                     Span::raw(format::format_file_size(col.total_uncompressed_size as u64)),
                 ]));
                 lines.push(Line::from(vec![
-                    Span::styled("    Sort Order: ", Style::default().fg(Color::Magenta)),
+                    Span::styled("    Sort Order: ", *FIELD_STYLE),
                     Span::raw(col.sort_order.to_string()),
                 ]));
 
                 if let Some(stats) = &col.statistics {
                     if let Some(min) = &stats.min {
                         lines.push(Line::from(vec![
-                            Span::styled("    Min: ", Style::default().fg(Color::Magenta)),
+                            Span::styled("    Min: ", *FIELD_STYLE),
                             Span::raw(min.clone()),
                         ]));
                     }
                     if let Some(max) = &stats.max {
                         lines.push(Line::from(vec![
-                            Span::styled("    Max: ", Style::default().fg(Color::Magenta)),
+                            Span::styled("    Max: ", *FIELD_STYLE),
                             Span::raw(max.clone()),
                         ]));
                     }
                     if let Some(null_count) = stats.null_count {
                         lines.push(Line::from(vec![
-                            Span::styled("    Null Count: ", Style::default().fg(Color::Magenta)),
+                            Span::styled("    Null Count: ", *FIELD_STYLE),
                             Span::raw(null_count.to_string()),
                         ]));
                     }
                     if let Some(distinct_count) = stats.distinct_count {
                         lines.push(Line::from(vec![
-                            Span::styled("    Distinct Count: ", Style::default().fg(Color::Magenta)),
+                            Span::styled("    Distinct Count: ", *FIELD_STYLE),
                             Span::raw(distinct_count.to_string()),
                         ]));
                     }
