@@ -1,5 +1,5 @@
+use crate::format::format_file_size;
 use crate::{ParquetFileData, SchemaField, SchemaType, format};
-use textwrap;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, MouseEvent, MouseEventKind};
 use ratatui::{
     Frame, Terminal,
@@ -13,6 +13,8 @@ use ratatui::{
 };
 use std::io;
 use std::sync::LazyLock;
+use textwrap;
+use crate::args::Args;
 
 static FIELD_STYLE: LazyLock<Style> = LazyLock::new(|| Style::default().fg(Color::Magenta));
 
@@ -65,6 +67,7 @@ impl ViewMode {
 
 pub struct App {
     pub info: ParquetFileData,
+    pub args: Args,
     pub current_view: ViewMode,
     pub should_quit: bool,
     pub scroll_offset: usize,
@@ -202,11 +205,17 @@ impl App {
             )]));
 
             for (key, value) in &pq_meta.key_value_metadata {
+                let value_len = value.len();
+                let (value, truncated) = if !self.args.no_truncate && value.len() > self.args.max_value_length {
+                    (format!("{}...", &value[..self.args.max_value_length]), true)
+                } else {
+                    (value.clone(), false)
+                };
                 let prefix = format!("  {}: ", key);
                 // area.width minus borders (2) minus horizontal padding (2)
                 let available = (area.width as usize).saturating_sub(4);
                 let value_width = available.saturating_sub(prefix.len());
-                let wrapped = textwrap::wrap(value, value_width.max(1));
+                let wrapped = textwrap::wrap(&value, value_width.max(1));
                 let indent = " ".repeat(prefix.len());
                 let mut iter = wrapped.into_iter();
                 if let Some(first) = iter.next() {
@@ -220,6 +229,14 @@ impl App {
                         Span::raw(indent.clone()),
                         Span::raw(cont.into_owned()),
                     ]));
+                }
+                if truncated {
+                    lines.push(Line::from(vec![Span::styled(
+                        format!("{}truncated {}", indent, format_file_size(value_len as u64)),
+                        Style::default()
+                            .fg(Color::LightRed)
+                            .add_modifier(Modifier::ITALIC),
+                    )]))
                 }
             }
         }
@@ -255,7 +272,10 @@ impl App {
                 Span::raw(format::format_file_size(rg.compressed_size as u64)),
             ]));
             if !rg.sorting_columns.is_empty() {
-                lines.push(Line::from(Span::styled("    Sorted By:", Style::default().fg(Color::Magenta))));
+                lines.push(Line::from(Span::styled(
+                    "    Sorted By:",
+                    Style::default().fg(Color::Magenta),
+                )));
                 for sc in &rg.sorting_columns {
                     let direction = if sc.descending { "DESC" } else { "ASC" };
                     let nulls = if sc.nulls_first {
@@ -320,9 +340,10 @@ impl App {
         let mut lines = vec![];
 
         for rg in row_groups {
-            lines.push(Line::from(vec![
-                Span::styled(format!("Row Group {}", rg.index), Style::default().fg(Color::Yellow)),
-            ]));
+            lines.push(Line::from(vec![Span::styled(
+                format!("Row Group {}", rg.index),
+                Style::default().fg(Color::Yellow),
+            )]));
             lines.push(Line::from(""));
 
             for col in &rg.columns {
@@ -554,9 +575,10 @@ impl App {
         }
     }
 
-    pub fn new(info: ParquetFileData) -> Self {
+    pub fn new(info: ParquetFileData, args: Args) -> Self {
         Self {
             info,
+            args,
             current_view: ViewMode::Info,
             should_quit: false,
             scroll_offset: 0,

@@ -8,21 +8,10 @@ use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture},
     execute,
 };
-use parq::{AppError, ParquetFileData, app::App};
+use parq::{AppError, ParquetFileData, app::App, args::Args};
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use std::io;
-
-#[derive(Parser, Debug)]
-#[command(name = env!("CARGO_PKG_NAME"))]
-#[command(version)]
-#[command(about = env!("CARGO_PKG_DESCRIPTION"))]
-#[command(author = env!("CARGO_PKG_AUTHORS"))]
-struct Args {
-    /// Path to the parquet file to analyze
-    #[arg(value_name = "FILE")]
-    filename: String,
-}
 
 fn main() {
     match run() {
@@ -40,7 +29,7 @@ fn run() -> Result<()> {
     let file_info = ParquetFileData::new(&args.filename)?;
 
     let mut terminal = init_terminal()?;
-    let mut app = App::new(file_info);
+    let mut app = App::new(file_info, args);
     app.run(&mut terminal)?;
     restore_terminal(&mut terminal)?;
 

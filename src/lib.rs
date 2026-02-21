@@ -1,4 +1,5 @@
 pub mod app;
+pub mod args;
 pub mod format;
 
 use chrono::{DateTime, Local};
@@ -159,7 +160,10 @@ impl ParquetFileData {
                             ColumnChunkInfo {
                                 name: col.column_descr().name().to_string(),
                                 physical_type: col.column_descr().physical_type().to_string(),
-                                logical_type: col.column_descr().logical_type_ref().map(pq_logical_type_to_string),
+                                logical_type: col
+                                    .column_descr()
+                                    .logical_type_ref()
+                                    .map(pq_logical_type_to_string),
                                 converted_type,
                                 encodings: col
                                     .encodings()
