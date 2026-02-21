@@ -16,12 +16,12 @@ name = "parq"
 path = "src/bin/parq.rs"
 
 [dependencies]
-clap = { version = "4.5.54", features = ["derive"] }
-parquet = "57.2.0"
+clap = { version = "4.5.60", features = ["derive"] }
+parquet = "57.3.0"
 thiserror = "2.0.18"
 ratatui = "0.30.0"
 crossterm = "0.29.0"
-anyhow = "1.0.100"
+anyhow = "1.0.102"
 chrono = "0.4.43"
 byte-unit = "5.2.0"
 num-format = "0.4.4"
