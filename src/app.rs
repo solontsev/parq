@@ -1,4 +1,5 @@
 use crate::{ParquetFileData, SchemaField, SchemaType, format};
+use textwrap;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, MouseEvent, MouseEventKind};
 use ratatui::{
     Frame, Terminal,
@@ -201,10 +202,25 @@ impl App {
             )]));
 
             for (key, value) in &pq_meta.key_value_metadata {
-                lines.push(Line::from(vec![
-                    Span::styled(format!("  {}: ", key), Style::default().fg(Color::Cyan)),
-                    Span::raw(value.clone()),
-                ]));
+                let prefix = format!("  {}: ", key);
+                // area.width minus borders (2) minus horizontal padding (2)
+                let available = (area.width as usize).saturating_sub(4);
+                let value_width = available.saturating_sub(prefix.len());
+                let wrapped = textwrap::wrap(value, value_width.max(1));
+                let indent = " ".repeat(prefix.len());
+                let mut iter = wrapped.into_iter();
+                if let Some(first) = iter.next() {
+                    lines.push(Line::from(vec![
+                        Span::styled(prefix.clone(), Style::default().fg(Color::Cyan)),
+                        Span::raw(first.into_owned()),
+                    ]));
+                }
+                for cont in iter {
+                    lines.push(Line::from(vec![
+                        Span::raw(indent.clone()),
+                        Span::raw(cont.into_owned()),
+                    ]));
+                }
             }
         }
 
