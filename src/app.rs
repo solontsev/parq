@@ -1,3 +1,4 @@
+use crate::args::Args;
 use crate::format::format_file_size;
 use crate::{ParquetFileData, SchemaField, SchemaType, format};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, MouseEvent, MouseEventKind};
@@ -14,9 +15,10 @@ use ratatui::{
 use std::io;
 use std::sync::LazyLock;
 use textwrap;
-use crate::args::Args;
 
-static FIELD_STYLE: LazyLock<Style> = LazyLock::new(|| Style::default().fg(Color::Magenta));
+static FIELD_STYLE: LazyLock<Style> = LazyLock::new(|| Style::default().fg(Color::Cyan));
+static HEADER_STYLE: LazyLock<Style> = LazyLock::new(|| Style::default().fg(Color::Yellow));
+static GROUP_STYLE: LazyLock<Style> = LazyLock::new(|| Style::default().fg(Color::LightGreen));
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ViewMode {
@@ -140,7 +142,7 @@ impl App {
             ViewMode::Info => self.render_info_view(frame, chunks[1]),
             ViewMode::Schema => self.render_schema_view(frame, chunks[1]),
             ViewMode::Data => self.render_data_view(frame, chunks[1]),
-            ViewMode::Stats => self.render_stats_view(frame, chunks[1]),
+            ViewMode::Stats => self.render_column_stats_view(frame, chunks[1]),
         }
     }
 
@@ -169,28 +171,28 @@ impl App {
 
         let pq_meta = &self.info.metadata;
         lines.push(Line::from(vec![
-            Span::styled("Version: ", Style::default().fg(Color::Cyan)),
+            Span::styled("Version: ", *FIELD_STYLE),
             Span::raw(pq_meta.version.to_string()),
         ]));
 
         lines.push(Line::from(vec![
-            Span::styled("Total Rows: ", Style::default().fg(Color::Cyan)),
+            Span::styled("Total Rows: ", *FIELD_STYLE),
             Span::raw(format::format_number(pq_meta.num_rows)),
         ]));
 
         lines.push(Line::from(vec![
-            Span::styled("Total Columns: ", Style::default().fg(Color::Cyan)),
+            Span::styled("Total Columns: ", *FIELD_STYLE),
             Span::raw(pq_meta.num_columns.to_string()),
         ]));
 
         lines.push(Line::from(vec![
-            Span::styled("Row Groups: ", Style::default().fg(Color::Cyan)),
+            Span::styled("Row Groups: ", *FIELD_STYLE),
             Span::raw(pq_meta.num_row_groups.to_string()),
         ]));
 
         if let Some(created_by) = &pq_meta.created_by {
             lines.push(Line::from(vec![
-                Span::styled("Created By: ", Style::default().fg(Color::Cyan)),
+                Span::styled("Created By: ", *FIELD_STYLE),
                 Span::raw(created_by.clone()),
             ]));
         }
@@ -199,18 +201,17 @@ impl App {
             lines.push(Line::from(""));
             lines.push(Line::from(vec![Span::styled(
                 "Key-Value Metadata:",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
+                *HEADER_STYLE,
             )]));
 
             for (key, value) in &pq_meta.key_value_metadata {
                 let value_len = value.len();
-                let (value, truncated) = if !self.args.no_truncate && value.len() > self.args.max_value_length {
-                    (format!("{}...", &value[..self.args.max_value_length]), true)
-                } else {
-                    (value.clone(), false)
-                };
+                let (value, truncated) =
+                    if !self.args.no_truncate && value.len() > self.args.max_value_length {
+                        (format!("{}...", &value[..self.args.max_value_length]), true)
+                    } else {
+                        (value.clone(), false)
+                    };
                 let prefix = format!("  {}: ", key);
                 // area.width minus borders (2) minus horizontal padding (2)
                 let available = (area.width as usize).saturating_sub(4);
@@ -220,7 +221,7 @@ impl App {
                 let mut iter = wrapped.into_iter();
                 if let Some(first) = iter.next() {
                     lines.push(Line::from(vec![
-                        Span::styled(prefix.clone(), Style::default().fg(Color::Cyan)),
+                        Span::styled(prefix.clone(), *FIELD_STYLE),
                         Span::raw(first.into_owned()),
                     ]));
                 }
@@ -243,20 +244,12 @@ impl App {
 
         let info = &self.info;
         lines.push(Line::from(""));
-        lines.push(Line::from(vec![Span::styled(
-            "Row Groups:",
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        )]));
+        lines.push(Line::from(vec![Span::styled("Row Groups:", *HEADER_STYLE)]));
 
         for rg in &info.row_groups_data {
             lines.push(Line::from(""));
             lines.push(Line::from(vec![
-                Span::styled(
-                    format!("  Row Group {}", rg.index),
-                    Style::default().fg(Color::Green),
-                ),
+                Span::styled(format!("  Row Group {}", rg.index), *GROUP_STYLE),
                 Span::raw(format!(
                     " ({} rows, {} columns)",
                     format::format_number(rg.num_rows as u64),
@@ -264,18 +257,15 @@ impl App {
                 )),
             ]));
             lines.push(Line::from(vec![
-                Span::styled("    Total Size: ", Style::default().fg(Color::Magenta)),
+                Span::styled("    Total Size: ", *FIELD_STYLE),
                 Span::raw(format::format_file_size(rg.total_byte_size as u64)),
             ]));
             lines.push(Line::from(vec![
-                Span::styled("    Compressed Size: ", Style::default().fg(Color::Magenta)),
+                Span::styled("    Compressed Size: ", *FIELD_STYLE),
                 Span::raw(format::format_file_size(rg.compressed_size as u64)),
             ]));
             if !rg.sorting_columns.is_empty() {
-                lines.push(Line::from(Span::styled(
-                    "    Sorted By:",
-                    Style::default().fg(Color::Magenta),
-                )));
+                lines.push(Line::from(Span::styled("    Sorted By:", *FIELD_STYLE)));
                 for sc in &rg.sorting_columns {
                     let direction = if sc.descending { "DESC" } else { "ASC" };
                     let nulls = if sc.nulls_first {
@@ -335,20 +325,20 @@ impl App {
         );
     }
 
-    fn render_stats_view(&mut self, frame: &mut Frame, area: Rect) {
+    fn render_column_stats_view(&mut self, frame: &mut Frame, area: Rect) {
         let row_groups = &self.info.row_groups_data;
         let mut lines = vec![];
 
         for rg in row_groups {
             lines.push(Line::from(vec![Span::styled(
                 format!("Row Group {}", rg.index),
-                Style::default().fg(Color::Yellow),
+                *HEADER_STYLE,
             )]));
             lines.push(Line::from(""));
 
             for col in &rg.columns {
                 lines.push(Line::from(vec![
-                    Span::styled("  Column: ", Style::default().fg(Color::Green)),
+                    Span::styled("  Column: ", *GROUP_STYLE),
                     Span::styled(&col.name, Style::default().fg(Color::White)),
                     Span::raw(format!(
                         " ({} values)",
