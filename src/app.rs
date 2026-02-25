@@ -17,8 +17,8 @@ use std::sync::LazyLock;
 use textwrap;
 
 static FIELD_STYLE: LazyLock<Style> = LazyLock::new(|| Style::default().fg(Color::Cyan));
-static HEADER_STYLE: LazyLock<Style> = LazyLock::new(|| Style::default().fg(Color::Yellow));
-static GROUP_STYLE: LazyLock<Style> = LazyLock::new(|| Style::default().fg(Color::LightGreen));
+static HEADER_STYLE: LazyLock<Style> = LazyLock::new(|| Style::default().fg(Color::LightGreen));
+static GROUP_STYLE: LazyLock<Style> = LazyLock::new(|| Style::default().fg(Color::Yellow));
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ViewMode {
@@ -34,7 +34,7 @@ impl ViewMode {
             ViewMode::Info => "Info",
             ViewMode::Schema => "Schema",
             ViewMode::Data => "Data Preview",
-            ViewMode::Stats => "Column Statistics",
+            ViewMode::Stats => "Column Stats",
         }
     }
 
@@ -201,7 +201,7 @@ impl App {
             lines.push(Line::from(""));
             lines.push(Line::from(vec![Span::styled(
                 "Key-Value Metadata:",
-                *HEADER_STYLE,
+                (*HEADER_STYLE).add_modifier(Modifier::BOLD),
             )]));
 
             for (key, value) in &pq_meta.key_value_metadata {
@@ -244,7 +244,7 @@ impl App {
 
         let info = &self.info;
         lines.push(Line::from(""));
-        lines.push(Line::from(vec![Span::styled("Row Groups:", *HEADER_STYLE)]));
+        lines.push(Line::from(vec![Span::styled("Row Groups:", (*HEADER_STYLE).add_modifier(Modifier::BOLD))]));
 
         for rg in &info.row_groups_data {
             lines.push(Line::from(""));
@@ -332,7 +332,7 @@ impl App {
         for rg in row_groups {
             lines.push(Line::from(vec![Span::styled(
                 format!("Row Group {}", rg.index),
-                *HEADER_STYLE,
+                (*HEADER_STYLE).add_modifier(Modifier::BOLD),
             )]));
             lines.push(Line::from(""));
 
