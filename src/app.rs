@@ -159,14 +159,18 @@ impl App {
             Span::styled("Size: ", Style::default().fg(Color::White).bold()),
             Span::raw(format::format_file_size(file_meta.size)),
         ]));
-        lines.push(Line::from(vec![
-            Span::styled("Created: ", Style::default().fg(Color::White).bold()),
-            Span::raw(file_meta.created.to_rfc2822()),
-        ]));
-        lines.push(Line::from(vec![
-            Span::styled("Modified: ", Style::default().fg(Color::White).bold()),
-            Span::raw(file_meta.modified.to_rfc2822()),
-        ]));
+        if let Some(created) = file_meta.created {
+            lines.push(Line::from(vec![
+                Span::styled("Created: ", Style::default().fg(Color::White).bold()),
+                Span::raw(created.to_rfc2822()),
+            ]));
+        }
+        if let Some(modified) = file_meta.modified {
+            lines.push(Line::from(vec![
+                Span::styled("Modified: ", Style::default().fg(Color::White).bold()),
+                Span::raw(modified.to_rfc2822()),
+            ]));
+        }
         lines.push(Line::from(""));
 
         let pq_meta = &self.info.metadata;
@@ -244,7 +248,10 @@ impl App {
 
         let info = &self.info;
         lines.push(Line::from(""));
-        lines.push(Line::from(vec![Span::styled("Row Groups:", (*HEADER_STYLE).add_modifier(Modifier::BOLD))]));
+        lines.push(Line::from(vec![Span::styled(
+            "Row Groups:",
+            (*HEADER_STYLE).add_modifier(Modifier::BOLD),
+        )]));
 
         for rg in &info.row_groups_data {
             lines.push(Line::from(""));
@@ -299,7 +306,7 @@ impl App {
 
         {
             let schema_tree = &self.info.metadata.schema_tree;
-            render_schema_node(&schema_tree, 0, &mut lines);
+            render_schema_node(schema_tree, 0, &mut lines);
         }
 
         render_lines_with_scrollbar(
@@ -312,9 +319,7 @@ impl App {
     }
 
     fn render_data_view(&mut self, frame: &mut Frame, area: Rect) {
-        let mut lines = vec![];
-
-        lines.push(Line::from("Coming soon..."));
+        let lines = vec![Line::from("Coming soon...")];
 
         render_lines_with_scrollbar(
             &mut self.scroll_offset,

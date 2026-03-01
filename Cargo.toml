@@ -17,7 +17,7 @@ path = "src/bin/parq.rs"
 
 [dependencies]
 clap = { version = "4.5.60", features = ["derive"] }
-parquet = "57.3.0"
+parquet = { version = "58.0.0", features = ["object_store"] }
 thiserror = "2.0.18"
 ratatui = "0.30.0"
 crossterm = "0.29.0"
@@ -26,3 +26,6 @@ chrono = "0.4.43"
 byte-unit = "5.2.0"
 num-format = "0.4.4"
 textwrap = "0.16.2"
+object_store = { version = "0.13.1", features = ["aws"] }
+url = "2.5.8"
+tokio = { version =  "1.49.0", features = ["rt-multi-thread"] }

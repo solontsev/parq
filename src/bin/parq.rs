@@ -8,7 +8,7 @@ use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture},
     execute,
 };
-use parq::{AppError, ParquetFileData, app::App, args::Args};
+use parq::{ParquetFileData, app::App, args::Args, source};
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use std::io;
@@ -25,8 +25,9 @@ fn main() {
 
 fn run() -> Result<()> {
     let args = Args::parse();
-
-    let file_info = ParquetFileData::new(&args.filename)?;
+    let file_source = source::FileSource::parse(&args.filename)?;
+    let source_file = file_source.load()?;
+    let file_info = ParquetFileData::new(&source_file)?;
 
     let mut terminal = init_terminal()?;
     let mut app = App::new(file_info, args);
@@ -57,8 +58,8 @@ fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Re
         let _ = event::read();
     }
 
-    disable_raw_mode().map_err(|e| AppError::IoError(e))?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen).map_err(|e| AppError::IoError(e))?;
-    terminal.show_cursor().map_err(|e| AppError::IoError(e))?;
+    disable_raw_mode()?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    terminal.show_cursor()?;
     Ok(())
 }
