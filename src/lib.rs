@@ -1,13 +1,13 @@
 pub mod app;
 pub mod args;
 pub mod format;
+pub mod source;
 
+use crate::source::SourceFile;
 use chrono::{DateTime, Local};
 use parquet::basic::{ConvertedType, LogicalType, TimeUnit};
-use parquet::file::reader::{FileReader, SerializedFileReader};
 use parquet::file::statistics::Statistics;
 use parquet::schema::types::Type;
-use std::fs::File;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -29,8 +29,8 @@ pub struct ParquetFileData {
 #[derive(Debug, Clone)]
 pub struct FileMetadata {
     pub name: String,
-    pub created: DateTime<Local>,
-    pub modified: DateTime<Local>,
+    pub created: Option<DateTime<Local>>,
+    pub modified: Option<DateTime<Local>>,
     pub size: u64,
 }
 
@@ -88,27 +88,17 @@ pub struct ColumnStatistics {
 }
 
 impl ParquetFileData {
-    pub fn new(file_path: &str) -> Result<Self, AppError> {
-        let file = File::open(file_path)?;
-
-        // extract basic file metadata
-        let file_meta = file.metadata()?;
-        let created: DateTime<Local> = file_meta.created()?.into();
-        let modified: DateTime<Local> = file_meta.modified()?.into();
-        let size = file_meta.len();
-
-        let reader = SerializedFileReader::new(file)?;
-
-        let pq_meta = reader.metadata();
+    pub fn new(source_file: &SourceFile) -> Result<Self, AppError> {
+        let pq_meta = source_file.pq_meta.clone();
         let pq_file_meta = pq_meta.file_metadata();
         let schema = pq_file_meta.schema_descr();
 
         Ok(Self {
             file_meta: FileMetadata {
-                name: file_path.to_owned(),
-                created,
-                modified,
-                size,
+                name: source_file.name.clone(),
+                created: source_file.created,
+                modified: source_file.modified,
+                size: source_file.size,
             },
             metadata: ParquetFileMetadata {
                 num_rows: pq_file_meta.num_rows() as u64,
@@ -242,9 +232,7 @@ impl SchemaField {
             t => Some(t.to_string()),
         };
 
-        let logical_type = basic_info
-            .logical_type_ref()
-            .map(|lt| pq_logical_type_to_string(lt));
+        let logical_type = basic_info.logical_type_ref().map(pq_logical_type_to_string);
 
         let repetition = if basic_info.has_repetition() {
             Some(basic_info.repetition().to_string())
